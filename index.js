@@ -20,7 +20,7 @@ app.listen(PORT, '0.0.0.0', () => {
 // --- 2. CLOUDFLARE R2 CLIENT ---
 const r2Client = new S3Client({
     region: 'auto', 
-    endpoint: `https://${process.env.CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: `https://${process.env.CF_ACCOUNT_ID}.eu.r2.cloudflarestorage.com`,
     credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY,
         secretAccessKey: process.env.R2_SECRET_KEY,
@@ -61,6 +61,7 @@ client.on('messageCreate', async (message) => {
                 });
 
                 // Upload to Cloudflare R2
+                console.log(`DEBUG: Attempting upload to bucket: "${process.env.R2_BUCKET_NAME}"`);
                 const upload = new Upload({
                     client: r2Client,
                     params: {
