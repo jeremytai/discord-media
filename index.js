@@ -2,87 +2,95 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const { S3Client } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
 const axios = require('axios');
+const sharp = require('sharp');
 const express = require('express');
 require('dotenv').config();
 
-// --- 1. HEALTH CHECK SERVER (For Koyeb) ---
+// --- 1. HEALTH CHECK SERVER ---
 const app = express();
-const PORT = process.env.PORT || 8000;
-
-app.get('/health', (req, res) => {
-    res.status(200).send('Bot is healthy');
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Health check server running on port ${PORT}`);
-});
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.listen(process.env.PORT || 8000, '0.0.0.0');
 
 // --- 2. CLOUDFLARE R2 CLIENT ---
 const r2Client = new S3Client({
-    region: 'auto', 
-    endpoint: `https://${process.env.CF_ACCOUNT_ID}.eu.r2.cloudflarestorage.com`,
+    region: 'auto',
+    endpoint: `https://${process.env.CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY,
         secretAccessKey: process.env.R2_SECRET_KEY,
     },
 });
 
-// --- 3. DISCORD BOT CLIENT ---
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent // Ensure this is enabled in Dev Portal!
+        GatewayIntentBits.MessageContent
     ] 
 });
 
-client.once('ready', () => {
-    console.log(`🤖 Logged in as ${client.user.tag}`);
-});
+// Generic Upload Helper
+async function uploadToR2(buffer, fileName, contentType) {
+    const upload = new Upload({
+        client: r2Client,
+        params: {
+            Bucket: process.env.R2_BUCKET_NAME,
+            Key: `uploads/${fileName}`,
+            Body: buffer,
+            ContentType: contentType,
+        }
+    });
+    return upload.done();
+}
 
 client.on('messageCreate', async (message) => {
-    // Ignore messages from other channels or other bots
     if (message.channelId !== process.env.CHANNEL_ID || message.author.bot) return;
 
-    // Check if message has attachments
-    if (message.attachments.size === 0) return;
-
     for (const attachment of message.attachments.values()) {
-        // Only process images
         if (attachment.contentType?.startsWith('image/')) {
-            console.log(`📸 New image detected: ${attachment.name}`);
-
             try {
-                // Download image stream from Discord
-                const response = await axios({
-                    method: 'get',
-                    url: attachment.url,
-                    responseType: 'stream'
-                });
-
-                // Upload to Cloudflare R2
-                console.log(`DEBUG: Attempting upload to bucket: "${process.env.R2_BUCKET_NAME}"`);
-                const upload = new Upload({
-                    client: r2Client,
-                    params: {
-                        Bucket: process.env.R2_BUCKET_NAME,
-                        Key: `uploads/${Date.now()}_${attachment.name}`,
-                        Body: response.data,
-                        ContentType: attachment.contentType,
-                    }
-                });
-
-                await upload.done();
-                console.log(`✅ Successfully synced to R2: ${attachment.name}`);
+                const uploader = message.author.username;
+                const serverName = message.guild?.name || "Private Message";
                 
-                // Optional: React to the message to show success
-                await message.react('✅');
+                console.log(`📸 Processing image from ${uploader} in ${serverName}...`);
+
+                // 1. Download image
+                const response = await axios({ url: attachment.url, responseType: 'arraybuffer' });
+                const inputBuffer = Buffer.from(response.data);
+                const baseName = `${Date.now()}_${attachment.name.split('.')[0]}`;
+
+                // 2. Setup Sharp with Metadata preservation + Custom Tags
+                const processor = sharp(inputBuffer)
+                    .keepMetadata() // Crucial: Keeps original GPS and Exif
+                    .withExifMerge({
+                        IFD0: {
+                            Artist: uploader,        // Injects Username into "Author"
+                            Copyright: `Uploaded to ${serverName} by ${uploader}`
+                        }
+                    });
+
+                // 3. Generate Formats (cloning keeps the settings above)
+                const [webpBuffer, avifBuffer] = await Promise.all([
+                    processor.clone().webp({ quality: 80 }).toBuffer(),
+                    processor.clone().avif({ quality: 50 }).toBuffer()
+                ]);
+
+                // 4. Upload all 3 versions
+                await Promise.all([
+                    uploadToR2(inputBuffer, `${baseName}_original.${attachment.name.split('.').pop()}`, attachment.contentType),
+                    uploadToR2(webpBuffer, `${baseName}.webp`, 'image/webp'),
+                    uploadToR2(avifBuffer, `${baseName}.avif`, 'image/avif')
+                ]);
+
+                console.log(`✅ Success for: ${attachment.name}`);
+                await message.react('🚀');
             } catch (err) {
-                console.error('❌ Sync failed:', err.message);
-                await message.react('❌');
+                console.error('❌ Processing failed:', err.message);
+                await message.react('⚠️');
             }
         }
     }
 });
 
+client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
 client.login(process.env.DISCORD_TOKEN);
