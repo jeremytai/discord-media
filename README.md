@@ -66,6 +66,8 @@ export default {
     }
   }
 };
+``
+---
 
 ## 🎨 3. WordPress Integration
 Add this to your theme's functions.php. It handles the grid and the lightbox.
@@ -75,7 +77,7 @@ Duplicate Filtering: Only displays .webp to avoid showing triplicate versions of
 
 Lightbox: Native JS/CSS lightbox for full-screen viewing on click.
 
-function r2_discord_gallery() {
+`function r2_discord_gallery() {
     $api_url = '[https://r2-gallery-api.abbett-labs.workers.dev](https://r2-gallery-api.abbett-labs.workers.dev)';
     $response = wp_remote_get($api_url);
     if (is_wp_error($response)) return 'Gallery unavailable.';
@@ -106,6 +108,8 @@ function r2_discord_gallery() {
     return $output;
 }
 add_shortcode('discord_r2_gallery', 'r2_discord_gallery');
+`
+---
 
 ## 🛠️ Maintenance
 
