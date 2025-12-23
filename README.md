@@ -67,7 +67,7 @@ export default {
   }
 };
 
-🎨 3. WordPress Integration
+## 🎨 3. WordPress Integration
 Add this to your theme's functions.php. It handles the grid and the lightbox.
 
 Features
@@ -107,5 +107,9 @@ function r2_discord_gallery() {
 }
 add_shortcode('discord_r2_gallery', 'r2_discord_gallery');
 
-🛠️ MaintenanceTaskCommand / ActionUpdate APInpx wrangler deployCheck FilesGo to Cloudflare Dashboard > R2 > discord-mediaClear CacheHard refresh (Ctrl+F5) on Worker URL
+## 🛠️ Maintenance
 
+Task | Command / Action
+Update API | npx wrangler deploy
+Check Files | Go to Cloudflare Dashboard > R2 > discord-media
+Clear Cache | Hard refresh (Ctrl+F5) on Worker URL
